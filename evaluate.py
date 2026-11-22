@@ -7,6 +7,7 @@ Outputs (results/):
 """
 import json
 import platform
+import sys
 import time
 
 import numpy as np
@@ -50,7 +51,12 @@ def latency_ms(model, n=config.LATENCY_RUNS):
 
 rows, probs = [], {}
 order = ["lexicon", "tfidf", "w2v_ffn", "bert_fp32", "bert_int8"]
-for key in [k for k in order if k in available()]:
+only = sys.argv[1:]            # e.g. `python evaluate.py w2v_ffn` re-evaluates one model, keeps the others
+prev = {}
+if only and (config.RESULTS_DIR / "results.json").exists():
+    old = json.load(open(config.RESULTS_DIR / "results.json"))
+    prev = {r["key"]: r for r in old["models"]}
+for key in [k for k in order if k in available() and (not only or k in only)]:
     print(f"\n=== {key} ===")
     m = load(key)
     t0 = time.time()
@@ -70,13 +76,19 @@ for key in [k for k in order if k in available()]:
     print(classification_report(y, pred, target_names=config.LABELS, digits=4))
     print(f"latency: mean {lat:.2f} ms, p95 {p95:.2f} ms  (test-set pass {time.time() - t0:.0f}s)")
 
+if only:   # merge the re-evaluated rows into the earlier full run, keep the model order
+    new = {r["key"]: r for r in rows}
+    rows = [new.get(k, prev.get(k)) for k in order if k in new or k in prev]
+    old_extra = {k: v for k, v in old.items() if k == "fp32_int8_prediction_agreement"} if prev else {}
+else:
+    old_extra = {}
 df = pd.DataFrame(rows)
 config.RESULTS_DIR.mkdir(exist_ok=True)
 df.to_csv(config.RESULTS_DIR / "results.csv", index=False)
 hw = hardware()
 (config.RESULTS_DIR / "hardware.txt").write_text(hw + "\n")
 
-extra = {}
+extra = dict(old_extra)
 if "bert_fp32" in probs and "bert_int8" in probs:
     agree = float(((probs["bert_fp32"] >= .5) == (probs["bert_int8"] >= .5)).mean())
     extra["fp32_int8_prediction_agreement"] = round(agree, 4)

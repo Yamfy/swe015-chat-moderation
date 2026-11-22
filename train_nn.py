@@ -17,6 +17,7 @@ train, val, _ = load_splits()
 # ---- 1. word2vec (skip-gram, negative sampling) on training messages only
 stoi, emb = train_word2vec(train.text.tolist(), dim=100, epochs=5, device=device)
 save_w2v(stoi, emb, config.ART_DIR / "w2v_vocab.json", config.ART_DIR / "w2v_emb.npy")
+print(f"  [v3: Adam word2vec + standardised FFN] mean vector norm = {np.linalg.norm(emb, axis=1).mean():.3f}")
 for probe in ("mac", "hakem", "aptal", "gerizekali"):
     print(f"  nearest to '{probe}':", [w for w, _ in most_similar(probe, stoi, emb, 6)])
 
@@ -25,6 +26,7 @@ Xtr = torch.from_numpy(average_embeddings(train.text.tolist(), stoi, emb))
 Xva = torch.from_numpy(average_embeddings(val.text.tolist(), stoi, emb))
 ytr = torch.tensor(train.label.values)
 net = FFN(dim=emb.shape[1])
+net.fit_scaler(Xtr)                       # standardise inputs with training statistics
 # class weights for imbalance (approx. 1 offensive : 4 clean)
 w = torch.tensor(len(ytr) / (2 * np.bincount(ytr.numpy())), dtype=torch.float)
 loss_fn = nn.CrossEntropyLoss(weight=w)
@@ -44,7 +46,10 @@ for epoch in range(40):
     if f1 > best_f1:
         best_f1, best_state = f1, copy.deepcopy(net.state_dict())
     if (epoch + 1) % 5 == 0:
-        print(f"epoch {epoch + 1:2d}  loss={loss.item():.4f}  val macro-F1={f1:.4f}")
+        with torch.no_grad():
+            share = net(Xva).argmax(-1).float().mean().item()
+        print(f"epoch {epoch + 1:2d}  loss={loss.item():.4f}  val macro-F1={f1:.4f}  "
+              f"predicted offensive={share:.1%}")
 
 torch.save(best_state, config.ART_DIR / "ffn.pt")
 print(f"Best val macro-F1 = {best_f1:.4f} (early-stopping on validation set)")
