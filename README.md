@@ -10,7 +10,7 @@ Gradio chat application.
 | **Data** | OffensEval-TR 2020 (Çöltekin, 2020) — ~31.7k labelled training tweets, 3.5k official test tweets |
 | **Task** | binary: `clean` (NOT) vs `offensive` (OFF) |
 | **Metrics** | macro-F1 (imbalanced classes), per-message CPU latency |
-| **Weights** | Hugging Face Hub: `https://huggingface.co/<HF_USERNAME>/swe015-chat-moderation` |
+| **Weights** | Hugging Face Hub: `https://huggingface.co/Yamfy/swe015-chat-moderation` |
 
 ## Quick start (single run command)
 
@@ -19,7 +19,7 @@ git clone https://github.com/Yamfy/swe015-chat-moderation.git
 cd swe015-chat-moderation
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-SWE015_HF_REPO=<HF_USERNAME>/swe015-chat-moderation python app.py
+SWE015_HF_REPO=Yamfy/swe015-chat-moderation python app.py
 ```
 
 Open http://127.0.0.1:7860. On first start the app downloads the trained weights from the
@@ -36,7 +36,7 @@ python train_nn.py          # own word2vec + feedforward network (SGD + backprop
 python train_bert.py        # fine-tune BERTurk (GPU recommended)
 python quantize_bert.py     # dynamic INT8 quantization
 python evaluate.py          # all models on the same test set -> results/
-python upload_weights.py <HF_USERNAME>/swe015-chat-moderation   # needs HF_TOKEN
+python upload_weights.py Yamfy/swe015-chat-moderation   # needs HF_TOKEN
 ```
 
 ## Architecture
