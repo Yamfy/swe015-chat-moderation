@@ -39,7 +39,7 @@ def build_vocab(token_lists, min_count=2):
     return {w: i for i, w in enumerate(itos)}, counts
 
 
-def train_word2vec(texts, dim=100, window=5, negatives=5, epochs=5, lr=0.025,
+def train_word2vec(texts, dim=100, window=5, negatives=5, epochs=5, lr=0.005,
                    batch_size=4096, device="cpu", seed=42, log=print):
     random.seed(seed); torch.manual_seed(seed); np.random.seed(seed)
     token_lists = [tokenize(t) for t in texts]
@@ -60,7 +60,8 @@ def train_word2vec(texts, dim=100, window=5, negatives=5, epochs=5, lr=0.025,
     pairs = torch.tensor(pairs, dtype=torch.long)
     log(f"word2vec: vocab={V}, training pairs={len(pairs)}")
     model = SkipGramNS(V, dim).to(device)
-    opt = torch.optim.SGD(model.parameters(), lr=lr * batch_size / 64)  # plain SGD
+    # Adam: plain SGD on the batch-mean loss barely moved the vectors (loss stayed at 6*ln2)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
     for ep in range(epochs):
         perm = torch.randperm(len(pairs))
         total = 0.0
@@ -87,13 +88,25 @@ def most_similar(word, stoi, emb, k=8):
 
 # ---------------------------------------------------------------- classifier
 class FFN(nn.Module):
+    """Averaged word2vec -> standardisation -> Linear -> ReLU -> Dropout -> Linear (2 classes).
+
+    The averaged SGNS vectors are tiny and nearly identical across messages, so the input is
+    standardised with the TRAINING-set mean / std (stored as buffers, saved with the weights).
+    """
+
     def __init__(self, dim=100, hidden=128, dropout=0.3):
         super().__init__()
+        self.register_buffer("mu", torch.zeros(dim))
+        self.register_buffer("sigma", torch.ones(dim))
         self.net = nn.Sequential(nn.Linear(dim, hidden), nn.ReLU(), nn.Dropout(dropout),
                                  nn.Linear(hidden, 2))
 
+    def fit_scaler(self, x):
+        self.mu.copy_(x.mean(0))
+        self.sigma.copy_(x.std(0) + 1e-6)
+
     def forward(self, x):
-        return self.net(x)
+        return self.net((x - self.mu) / self.sigma)
 
 
 def average_embeddings(texts, stoi, emb):
